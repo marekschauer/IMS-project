@@ -6,8 +6,9 @@
 
 #include <iostream>
 #include <vector>
-#include "bitmap_image.hpp"
 #include <stdlib.h>
+#include <random>
+#include "bitmap_image.hpp"
 
 #define IMAGE_WIDTH   (700)
 #define IMAGE_HEIGHT  (700)
@@ -189,12 +190,12 @@ void print_ca(Automata* ca, int time) {
 }
 */
 
-// double randnum (double a, double b)
-// {
-//   static std::default_random_engine generator;
-//   std::uniform_real_distribution<double> distribution (a,b);
-//   return distribution(generator);
-// }
+double randnum (double a, double b)
+{
+  static std::default_random_engine generator;
+  std::uniform_real_distribution<double> distribution (a,b);
+  return distribution(generator);
+}
 
 /**
  * @brief      Constructor for copying cells
@@ -459,7 +460,9 @@ void Automata::simulate() {
           Cell* tmpCell = getCell(neighbourhood_of_spreading[j][k]->x,neighbourhood_of_spreading[j][k]->y,actual_grid);
           if (tmpCell->state == 1) {
             float spread_prob = getSpreadingProbability(tmpCell->x,tmpCell->y);
-            if (spread_prob > 0.1) {
+            float rnd = randnum(0.0,1.0);
+            std::cout << "rnd... " << rnd << std::endl;
+            if (spread_prob > rnd) {
               next_grid[tmpCell->x][tmpCell->y]->state = 2;
               next_grid[tmpCell->x][tmpCell->y]->burning_time = 0;
             }
@@ -491,16 +494,75 @@ int main () {
 
   ca->time_step = 1;
   ca->simulation_time = 30;
-  ca->wind_velocity = 7.5;
+  ca->wind_velocity = 0;
   // wind direction - TODO
   ca->wind_direction = west;
   ca->alpha = 1;
   ca->beta = 1;
   
-  getCell(25,25,ca->actual_grid)->state = 3;
-  getCell(25,25,ca->next_grid)->state = 3;
+  getCell(25,45,ca->actual_grid)->state = 3;
+  getCell(25,45,ca->next_grid)->state = 3;
+  getCell(15,15,ca->actual_grid)->state = 3;
+  getCell(15,15,ca->next_grid)->state = 3;
 
   ca->simulate();
+
+  std::cout << ca->actual_grid[25][25]->state << std::endl;
+  std::cout << ca->next_grid[25][25]->state << std::endl;
+
+
+
+  //////just testing start///////////
+  material tmpMat;
+  tmpMat.structure_combustibility = 1;
+  tmpMat.spread_ability_time = 2;
+  tmpMat.extinction_time = 10;
+
+  Cell* tmpCell = new Cell;
+  tmpCell->material_properties = tmpMat;
+  tmpCell->x = 5;
+  tmpCell->y = 6;
+  tmpCell->state = 1; // TODO - put it to define
+  tmpCell->spread_wind_dir = 42; // TODO - delete this line
+  tmpCell->ratio_of_area = 1;
+
+  std::cout << tmpCell << std::endl;
+  Cell* anotherCell = tmpCell->copy();
+  anotherCell->x = 1598;
+  std::cout << anotherCell->x << std::endl;
+  std::cout << tmpCell->x << std::endl;
+  //////just testing end/////////////
+
+  // std::vector<std::vector<Cell*>> tmp = ca->getNeighbourhood(5,20);
+
+  // std::cout << tmp.size() << "x" << tmp[0].size() << std::endl;
+  // for (int i = 0; i < tmp.size(); ++i) {
+    // for (int j = 0; j < tmp[i].size(); ++j) {
+  //     std::cout << "|" << actual_grid[i][j]->x << "," << actual_grid[i][j]->y << "|";
+      // std::cout << "|" << tmp[i][j]->x << "," << tmp[i][j]->y;
+    // }
+    // std::cout << std::endl;
+  // }
+
+  // std::cout << "================================" << std::endl;
+
+  // for (int i = 0; i < ca->actual_grid.size(); ++i) {
+  //   for (int j = 0; j < ca->actual_grid[i].size(); ++j) {
+  //     std::cout << "[" << ca->actual_grid[i][j]->x << "," << ca->actual_grid[i][j]->y << "]" << std::endl;
+  //   }
+  //   std::cout << std::endl;
+  // }
+
+
+  // for (unsigned int i = 0; i < tmp.size(); ++i) {
+  //   for (unsigned int j = 0; j < tmp[i].size(); ++j) {
+  //     tmp[i][j]->state = 2;
+  //   }
+  // }
+
+  // ca->process_fire();
+
+
 
   return 0;
 }
