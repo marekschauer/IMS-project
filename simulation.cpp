@@ -9,9 +9,10 @@
 #include <stdlib.h>
 #include <random>
 #include "bitmap_image.hpp"
+#include "json.hpp"
 
-#define IMAGE_WIDTH   (700)
-#define IMAGE_HEIGHT  (700)
+#define IMAGE_WIDTH   (1500)
+#define IMAGE_HEIGHT  (1500)
 
 typedef struct material_struct {
  float structure_combustibility;
@@ -22,16 +23,29 @@ typedef struct material_struct {
 } material;
 
 typedef enum {
-   north,
-   south,
-   east,
-   west,
-   northeast,
-   northwest,
-   southeast,
-   southwest
+ north,
+ south,
+ east,
+ west,
+ northeast,
+ northwest,
+ southeast,
+ southwest
 } WindDirection;
 
+
+typedef struct automata_parameters_struct {
+  unsigned int cell_size;
+  unsigned int rows;
+  unsigned int cols;
+  unsigned int simulation_time;
+  unsigned int time_step;
+  unsigned int actual_time;
+  float wind_velocity;
+  WindDirection wind_direction;
+  unsigned int alpha;
+  unsigned int beta;
+} automata_parameters;
 
 class Cell {
 
@@ -68,6 +82,11 @@ class Automata {
 public:
   std::vector<std::vector<Cell*> > actual_grid;
   std::vector<std::vector<Cell*> > next_grid;
+  
+  /**
+   * Cell size in meters
+   */
+  unsigned int cell_size;
   /**
    * Rows of CA lattice
    */
@@ -98,12 +117,13 @@ public:
   WindDirection wind_direction;
   unsigned int alpha;
   unsigned int beta;
-  Automata (unsigned int, unsigned int);
+  Automata (automata_parameters);
   void process_fire(int, int);
   float getSpreadingProbability(int, int);
-  std::vector<std::vector<Cell*>> getNeighbourhood(int, int);
+  std::vector<std::vector<Cell*>> getNeighbourhood(unsigned int, unsigned int);
   std::vector<Cell*> getSpreadingCells();
-  bool isInLattice(int, int);
+  std::vector<Cell*> getBurningCells();
+  bool isInLattice(unsigned int, unsigned int);
   void simulate();
   void actualize_grid();
 };
@@ -115,47 +135,48 @@ public:
 **********************************************
 **********************************************
 ***/
-double x_coord(double x) {
- return x-(IMAGE_WIDTH/2);
+double x_coord(int width, double x) {
+ return x-(width/2);
 }
 
-double y_coord(double y) {
+double y_coord(int height, double y) {
 
- return (IMAGE_HEIGHT/2)-y;
+ return (height/2)-y;
 }
 
 // TODO - do nazvu suboru pridavat cas simulacie
 void print_ca(Automata* ca, int time) {
-  cartesian_canvas canvas(700,700);
+  int image_width = ca->cols*5;
+  int image_height = ca->rows*5;
+
+  cartesian_canvas canvas(image_width,image_height);
 
   canvas.image().clear(255);
 
   canvas.pen_width(1);
 
   ::srand(0xA5A5A5A5);
-  float cell_width = IMAGE_WIDTH/ca->cols;
-  std::cout << "cols: " << ca->cols << std::endl;
-  std::cout << "rows: " << ca->rows << std::endl;
+
   for (unsigned int j = 0; j < ca->cols; j++) {
     for (unsigned int i = 0; i < ca->rows; i++) {
       int state = ca->actual_grid[j][i]->state;
       switch(state) {
         case 0:
-          canvas.pen_color(255,255,255);
+        canvas.pen_color(255,255,255);
           break; //optional
-        case 1  :
+          case 1  :
           canvas.pen_color(200,200,200);
           break; //optional
-        case 2  :
+          case 2  :
           canvas.pen_color(255, 191, 0);
           break; //optional
-        case 3  :
+          case 3  :
           canvas.pen_color(255, 0, 0);
           break; //optional
-      
+
        // you can have any number of case statements.
         default : //Optional
-          canvas.pen_color(0,0,0);
+        canvas.pen_color(0,0,0);
       }
       // int shade = 255*ca->actual_grid[j][i]->spread_wind_dir;
       // if (ca->actual_grid[j][i]->spread_wind_dir == 42) {
@@ -164,14 +185,14 @@ void print_ca(Automata* ca, int time) {
       //   canvas.pen_color(shade, 0, 0);
       // }
       // std::cout << i << std::endl;
-      canvas.fill_rectangle(x_coord((IMAGE_WIDTH/ca->cols)*j),y_coord((IMAGE_HEIGHT/ca->rows)*i),x_coord((IMAGE_WIDTH/ca->cols)*j+IMAGE_WIDTH/ca->cols),y_coord((IMAGE_HEIGHT/ca->rows)*i+(IMAGE_HEIGHT/ca->rows)));
-      // canvas.fill_rectangle(x_coord((IMAGE_WIDTH/ca->cols)*i),y_coord((IMAGE_HEIGHT/ca->rows)*j),x_coord((IMAGE_WIDTH/ca->cols)*i+IMAGE_WIDTH/ca->cols),y_coord((IMAGE_HEIGHT/ca->rows)*j+(IMAGE_HEIGHT/ca->rows)));
+      canvas.fill_rectangle(x_coord(image_width,(image_width/ca->cols)*j),y_coord(image_height,(image_height/ca->rows)*i),x_coord(image_width,(image_width/ca->cols)*j+image_width/ca->cols),y_coord(image_height,(image_height/ca->rows)*i+(image_height/ca->rows)));
+      // canvas.fill_rectangle(x_coord(image_width,(image_width/ca->cols)*i),y_coord(image_height,(image_height/ca->rows)*j),x_coord(image_width,(image_width/ca->cols)*i+image_width/ca->cols),y_coord(image_height,(image_height/ca->rows)*j+(image_height/ca->rows)));
       canvas.pen_color(0,0,0);
-      canvas.rectangle(x_coord((IMAGE_WIDTH/ca->cols)*j),y_coord((IMAGE_HEIGHT/ca->rows)*i),x_coord((IMAGE_WIDTH/ca->cols)*j+IMAGE_WIDTH/ca->cols),y_coord((IMAGE_HEIGHT/ca->rows)*i+(IMAGE_HEIGHT/ca->rows)));
-     }
-   }
- std::string timeStr = std::to_string(time);
- canvas.image().save_image("moj_obrazok-"+timeStr+".bmp");
+      canvas.rectangle(x_coord(image_width,(image_width/ca->cols)*j),y_coord(image_height,(image_height/ca->rows)*i),x_coord(image_width,(image_width/ca->cols)*j+image_width/ca->cols),y_coord(image_height,(image_height/ca->rows)*i+(image_height/ca->rows)));
+    }
+  }
+  std::string timeStr = std::to_string(time);
+  canvas.image().save_image("moj_obrazok-"+timeStr+".bmp");
 
 }
 
@@ -218,16 +239,25 @@ Cell* Cell::copy() {
 }
 
 
-Automata::Automata(unsigned int c, unsigned int r) {
-  rows = r;
-  cols = c;
+Automata::Automata(automata_parameters params) {
+  cell_size = params.cell_size;
+  rows = params.rows;
+  cols = params.cols;
+  simulation_time = params.simulation_time;
+  time_step = params.time_step;
   actual_time = 0;
-  time_step = 3;
+  wind_velocity = params.wind_velocity;
+  wind_direction = params.wind_direction;
+  alpha = params.alpha;
+  beta = params.beta;
+
+  nlohmann::json j = "[{\"x\":30,\"y\":0,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":30,\"y\":1,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":30,\"y\":2,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":30,\"y\":3,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":30,\"y\":4,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":30,\"y\":5,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":30,\"y\":6,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":30,\"y\":7,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":30,\"y\":8,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":30,\"y\":9,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":30,\"y\":10,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":30,\"y\":11,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":30,\"y\":12,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":30,\"y\":13,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":30,\"y\":14,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":30,\"y\":15,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":30,\"y\":16,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":30,\"y\":17,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":30,\"y\":18,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":30,\"y\":19,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":30,\"y\":20,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":30,\"y\":21,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":30,\"y\":22,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":30,\"y\":23,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":30,\"y\":24,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":30,\"y\":25,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":30,\"y\":26,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":30,\"y\":27,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":30,\"y\":28,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":30,\"y\":29,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":30,\"y\":30,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":30,\"y\":31,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":30,\"y\":32,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":30,\"y\":33,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":30,\"y\":34,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":30,\"y\":35,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":30,\"y\":36,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":30,\"y\":37,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":30,\"y\":38,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":30,\"y\":39,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":30,\"y\":40,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":30,\"y\":41,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":30,\"y\":42,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":30,\"y\":43,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":30,\"y\":44,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":30,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":30,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":30,\"y\":47,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":30,\"y\":48,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":30,\"y\":49,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":31,\"y\":0,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":31,\"y\":1,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":31,\"y\":2,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":31,\"y\":3,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":31,\"y\":4,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":31,\"y\":5,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":31,\"y\":6,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":31,\"y\":7,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":31,\"y\":8,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":31,\"y\":9,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":31,\"y\":10,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":31,\"y\":11,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":31,\"y\":12,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":31,\"y\":13,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":31,\"y\":14,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":31,\"y\":15,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":31,\"y\":16,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":31,\"y\":17,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":31,\"y\":18,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":31,\"y\":19,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":31,\"y\":20,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":31,\"y\":21,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":31,\"y\":22,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":31,\"y\":23,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":31,\"y\":24,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":31,\"y\":25,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":31,\"y\":26,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":31,\"y\":27,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":31,\"y\":28,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":31,\"y\":29,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":31,\"y\":30,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":31,\"y\":31,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":31,\"y\":32,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":31,\"y\":33,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":31,\"y\":34,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":31,\"y\":35,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":31,\"y\":36,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":31,\"y\":37,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":31,\"y\":38,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":31,\"y\":39,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":31,\"y\":40,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":31,\"y\":41,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":31,\"y\":42,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":31,\"y\":43,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":31,\"y\":44,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":31,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":31,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":31,\"y\":47,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":31,\"y\":48,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":31,\"y\":49,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":32,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":32,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":33,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":33,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":34,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":34,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":35,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":35,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":36,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":36,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":37,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":37,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":38,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":38,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":39,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":39,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":40,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":40,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":41,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":41,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":42,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":42,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":43,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":43,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":44,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":44,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":45,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":45,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":46,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":46,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":47,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":47,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":48,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":48,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":49,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":49,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":50,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":50,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":51,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":51,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":52,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":52,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":53,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":53,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":54,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":54,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":55,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":55,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":56,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":56,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":57,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":57,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":58,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":58,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":59,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":59,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":60,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":60,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":61,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":61,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":62,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":62,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":63,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":63,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":64,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":64,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":65,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":65,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":66,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":66,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":67,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":67,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":68,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":68,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":69,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":69,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":70,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":70,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":71,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":71,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":72,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":72,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":73,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":73,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":74,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":74,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":75,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":75,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":76,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":76,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":77,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":77,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":78,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":78,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":79,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":79,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":80,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":80,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":81,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":81,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":82,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":82,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":83,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":83,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":84,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":84,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":85,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":85,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":86,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":86,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":87,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":87,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":88,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":88,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":89,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":89,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":90,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":90,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":91,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":91,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":92,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":92,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":93,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":93,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":94,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":94,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":95,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":95,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":96,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":96,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":97,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":97,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":98,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":98,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":99,\"y\":45,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}},{\"x\":99,\"y\":46,\"state\":0,\"spread_wind_dir\":0.5,\"ratio_of_area\":0.5,\"material_properties\":{\"structure_combustibility\":0,\"spread_ability_time\":0,\"extinction_time\":0}}]"_json;
+
   std::vector<Cell*> tmp_vec;
 
   // filling actual grid
-  for (unsigned int x = 0; x < c; ++x) {
-    for (unsigned int y = 0; y < r; ++y) {
+  for (unsigned int x = 0; x < cols; ++x) {
+    for (unsigned int y = 0; y < rows; ++y) {
       material tmpMat;
       tmpMat.structure_combustibility = 1;
       tmpMat.spread_ability_time = 2;
@@ -246,9 +276,18 @@ Automata::Automata(unsigned int c, unsigned int r) {
     tmp_vec.clear();
   }
 
+  for (int i = 0; i < j.size(); ++i) {
+    actual_grid[j.at(i)["x"]][j.at(i)["y"]]->state = j.at(i)["state"];
+    actual_grid[j.at(i)["x"]][j.at(i)["y"]]->spread_wind_dir = j.at(i)["spread_wind_dir"];
+    actual_grid[j.at(i)["x"]][j.at(i)["y"]]->ratio_of_area = j.at(i)["ratio_of_area"];
+    actual_grid[j.at(i)["x"]][j.at(i)["y"]]->material_properties.structure_combustibility = j.at(i)["material_properties"]["structure_combustibility"];
+    actual_grid[j.at(i)["x"]][j.at(i)["y"]]->material_properties.spread_ability_time = j.at(i)["material_properties"]["spread_ability_time"];
+    actual_grid[j.at(i)["x"]][j.at(i)["y"]]->material_properties.extinction_time = j.at(i)["material_properties"]["extinction_time"];
+  }
+
   // filling next grid
-  for (unsigned int x = 0; x < c; ++x) {
-    for (unsigned int y = 0; y < r; ++y) {
+  for (unsigned int x = 0; x < cols; ++x) {
+    for (unsigned int y = 0; y < rows; ++y) {
       Cell* to_be_added_to_new = actual_grid[x][y]->copy();
       tmp_vec.push_back(to_be_added_to_new);
     }
@@ -273,8 +312,9 @@ void Automata::actualize_grid() {
   }
 }
 
-bool Automata::isInLattice(int x, int y) {
-  return (x >= 0 && x < cols &&  y >= 0 && y < rows);
+bool Automata::isInLattice(unsigned int x, unsigned int y) {
+  // I'm not verifying, if y >= 0 and x >= 0, because unsigned int is always >= 0
+  return (x < cols && y < rows);
 }
 
 float Automata::getSpreadingProbability(int x, int y) {
@@ -282,11 +322,27 @@ float Automata::getSpreadingProbability(int x, int y) {
     return 0;
   }
   Cell* cell = actual_grid[x][y];
-  // std::cout << "========================" << std::endl;
-  // std::cout << "SDSD:" << cell->spread_wind_dir << std::endl;
-  // std::cout << "========================" << std::endl;
-  // TODO equation (2) - add Wij, beta and p(tckl)
-  return alpha*cell->material_properties.structure_combustibility*cell->ratio_of_area*cell->spread_wind_dir;
+
+  float ptckl = 1.0;
+  float t1 = cell->material_properties.spread_ability_time;
+  float t2 = cell->material_properties.extinction_time;
+  float t = cell->burning_time;
+
+  if (((t2-t1)/5)+t1 <= t && t <= t2) {
+    ptckl = (5*(-t+t2))/(4*(t2-t1));
+  } else if (t1 <= t && t <= ((t2-t1)/5)+t1) {
+    ptckl = (4.0*t)/(t2-t1)+(0.2*t2-4.2*t1)/(t2-t1);
+  }
+
+  // material compustibility
+  float sij = cell->material_properties.structure_combustibility;
+  // ratio of area occupied by building
+  float pij = cell->ratio_of_area;
+  // relates to spreading speed and direction
+  float wij = cell->spread_wind_dir;
+
+  return alpha*sij*pij*pow(wij,beta)*ptckl;
+  // return alpha*cell->material_properties.structure_combustibility*cell->ratio_of_area*cell->spread_wind_dir;
 }
 
 /**
@@ -296,7 +352,7 @@ float Automata::getSpreadingProbability(int x, int y) {
  * @param[in]  y     { parameter_description }
  */
 void Automata::process_fire(int x, int y) {
- 
+
   //JUST PLAYING
   std::vector<std::vector<float>> v;
   if (wind_velocity == 0) {
@@ -304,7 +360,7 @@ void Automata::process_fire(int x, int y) {
     v = {{0.3,0.3,0.3},{0.3,0.3},{0.3,0.3,0.3}};
   } else if (wind_velocity <= 1) {
       // the same for all wind directions
-      v = {{0.3,0.3,0.3},{0.3,0.5,0.5,0.5,0.3},{0.3,0.5,0.5,0.3},{0.3,0.5,0.5,0.5,0.3},{0.3,0.3,0.3}};
+    v = {{0.3,0.3,0.3},{0.3,0.5,0.5,0.5,0.3},{0.3,0.5,0.5,0.3},{0.3,0.5,0.5,0.5,0.3},{0.3,0.3,0.3}};
   } else if (wind_velocity < 5) {
     if (wind_direction == west || wind_direction == east) {
       // this is from west
@@ -338,8 +394,8 @@ void Automata::process_fire(int x, int y) {
   // changing the Wij of each cell in neigbourhood
   // row and col has meaning like row and column of neighbourhood
   int row_index, col_index;
-  for (int row = 0; row < neighbourhood.size(); ++row) {
-    for (int col = 0; col < neighbourhood[row].size(); ++col) {
+  for (unsigned int row = 0; row < neighbourhood.size(); ++row) {
+    for (unsigned int col = 0; col < neighbourhood[row].size(); ++col) {
       // std::cout << "[" << neighbourhood[row][col]->x << "," << neighbourhood[row][col]->y << "]";
       if (wind_direction == west || wind_direction == north) {
         row_index = row; col_index = col;
@@ -371,7 +427,7 @@ void Automata::process_fire(int x, int y) {
 
 }
 
-std::vector<std::vector<Cell*>> Automata::getNeighbourhood(int x_given, int y_given) {
+std::vector<std::vector<Cell*>> Automata::getNeighbourhood(unsigned int x_given, unsigned int y_given) {
   std::vector<std::vector<Cell*>> to_be_returned;
   std::vector<Cell*> tmp_vec;
   std::vector<int> neighbourhood_map;
@@ -385,8 +441,8 @@ std::vector<std::vector<Cell*>> Automata::getNeighbourhood(int x_given, int y_gi
   }
 
   int i = 0;
-  for (int y = y_given - neighbourhood_map.size()/2; y <= y_given + neighbourhood_map.size()/2; ++y) {
-    for (int x = x_given-neighbourhood_map[i]; x <= x_given+neighbourhood_map[i]; ++x) {
+  for (unsigned int y = y_given - neighbourhood_map.size()/2; y <= y_given + neighbourhood_map.size()/2; ++y) {
+    for (unsigned int x = x_given-neighbourhood_map[i]; x <= x_given+neighbourhood_map[i]; ++x) {
       if (!(x == x_given && y == y_given)) {
         if (isInLattice(x,y)) {
           tmp_vec.push_back(actual_grid[x][y]);
@@ -403,17 +459,38 @@ std::vector<std::vector<Cell*>> Automata::getNeighbourhood(int x_given, int y_gi
 }
 
 /**
+ * @brief      Gets all the cells, that have state = 2 or state = 3
+ *
+ * @return     The 1 dimensional vector of spreading cells.
+ */
+std::vector<Cell*> Automata::getBurningCells() {
+    // this vector holds the spreading cells (spreading cells have state = 3)
+  std::vector<Cell*> burning_cells;
+    // filling burning_cells vector
+  for (unsigned int i = 0; i < cols; ++i) {
+    for (unsigned int j = 0; j < rows; ++j) {
+      if (isInLattice(i,j)) {
+                if (actual_grid[i][j]->state == 3 || actual_grid[i][j]->state == 2) { // TODO - put 3 to define
+                  burning_cells.push_back(actual_grid[i][j]);
+                }
+              }
+            }
+          }
+          return burning_cells;
+        }
+
+/**
  * @brief      Gets all the cells, that have state = 3
  *
  * @return     The 1 dimensional vector of spreading cells.
  */
-std::vector<Cell*> Automata::getSpreadingCells() {
+        std::vector<Cell*> Automata::getSpreadingCells() {
   // this vector holds the spreading cells (spreading cells have state = 3)
-  std::vector<Cell*> spreading_cells;
+          std::vector<Cell*> spreading_cells;
   // filling spreading_cells vector
-  for (unsigned int i = 0; i < cols; ++i) {
-    for (unsigned int j = 0; j < rows; ++j) {
-      if (isInLattice(i,j)) {
+          for (unsigned int i = 0; i < cols; ++i) {
+            for (unsigned int j = 0; j < rows; ++j) {
+              if (isInLattice(i,j)) {
         if (actual_grid[i][j]->state == 3) { // TODO - put 3 to define
           spreading_cells.push_back(actual_grid[i][j]);
         }
@@ -423,8 +500,8 @@ std::vector<Cell*> Automata::getSpreadingCells() {
   return spreading_cells;
 }
 
-Cell* getCell(int x, int y, std::vector<std::vector<Cell*>> grid) {
-  if (x >= 0 && x < grid.size() && y >= 0 && y < grid[0].size()) {
+Cell* getCell(unsigned int x, unsigned int y, std::vector<std::vector<Cell*>> grid) {
+  if (x < grid.size() && y < grid[0].size()) {
     return grid[x][y];
   }
   return NULL;
@@ -434,43 +511,47 @@ void Automata::simulate() {
   for (actual_time = 0; actual_time < simulation_time; actual_time += time_step) {
 
     // Updating cell states if they are burning too long for their states
-    for (unsigned int x = 0; x < cols; ++x) {
-      for (unsigned int y = 0; y < rows; ++y) {
-        Cell* tmpCell = actual_grid[x][y];
-        if (tmpCell->state == 2 || tmpCell->state == 3) {
-          next_grid[x][y]->burning_time += time_step;
-        }
-        if ((tmpCell->state == 2 && tmpCell->burning_time >= tmpCell->material_properties.spread_ability_time) || (tmpCell->state == 3 && tmpCell->burning_time >= tmpCell->material_properties.extinction_time)) {
-          next_grid[x][y]->state++;
-        }
+    std::vector<Cell*> burning_cells = getBurningCells();
+    for (unsigned int i = 0; i < burning_cells.size(); ++i) {
+      Cell* tmpCell = burning_cells[i];
+      unsigned int x = tmpCell->x;
+      unsigned int y = tmpCell->y;
+
+      if (tmpCell->state == 2 || tmpCell->state == 3) {
+        next_grid[x][y]->burning_time += time_step;
+      }
+      if ((tmpCell->state == 2 && tmpCell->burning_time >= tmpCell->material_properties.spread_ability_time) || (tmpCell->state == 3 && tmpCell->burning_time >= tmpCell->material_properties.extinction_time)) {
+        next_grid[x][y]->state++;
       }
     }
 
-    std::vector<Cell*> spreading_cells = getSpreadingCells();
+    // std::vector<Cell*> spreading_cells = getSpreadingCells();
     // for each spreading cell
-    for (int i = 0; i < spreading_cells.size(); i++) {
+    for (unsigned int i = 0; i < burning_cells.size(); i++) {
+      if (burning_cells[i]->state == 3) {
       // getting the neighbourhood of spreading cell
-      Cell* spreading_cell = spreading_cells[i];
-      std::vector<std::vector<Cell*>> neighbourhood_of_spreading = getNeighbourhood(spreading_cell->x, spreading_cell->y);
+        Cell* spreading_cell = burning_cells[i];
+        std::vector<std::vector<Cell*>> neighbourhood_of_spreading = getNeighbourhood(spreading_cell->x, spreading_cell->y);
       // set Wij parameters for equation of Fij
-      process_fire(spreading_cell->x,spreading_cell->y);
+        process_fire(spreading_cell->x,spreading_cell->y);
       // for each cell from neighbourhood of spreading cell
-      for (int j = 0; j < neighbourhood_of_spreading.size(); j++) {
-        for (int k = 0; k < neighbourhood_of_spreading[j].size(); k++) {
-          Cell* tmpCell = getCell(neighbourhood_of_spreading[j][k]->x,neighbourhood_of_spreading[j][k]->y,actual_grid);
-          if (tmpCell->state == 1) {
-            float spread_prob = getSpreadingProbability(tmpCell->x,tmpCell->y);
-            float rnd = randnum(0.0,1.0);
-            std::cout << "rnd... " << rnd << std::endl;
-            if (spread_prob > rnd) {
-              next_grid[tmpCell->x][tmpCell->y]->state = 2;
-              next_grid[tmpCell->x][tmpCell->y]->burning_time = 0;
+        for (unsigned int j = 0; j < neighbourhood_of_spreading.size(); j++) {
+          for (unsigned int k = 0; k < neighbourhood_of_spreading[j].size(); k++) {
+            Cell* tmpCell = getCell(neighbourhood_of_spreading[j][k]->x,neighbourhood_of_spreading[j][k]->y,actual_grid);
+            if (tmpCell->state == 1) {
+              float spread_prob = getSpreadingProbability(tmpCell->x,tmpCell->y);
+              float rnd = randnum(0.0,1.0);
+              std::cout << "rnd... " << rnd << std::endl;
+              if (spread_prob > rnd) {
+                next_grid[tmpCell->x][tmpCell->y]->state = 2;
+                next_grid[tmpCell->x][tmpCell->y]->burning_time = 0;
+              }
             }
           }
         }
       }
     }
-    spreading_cells.clear();
+    burning_cells.clear();
 
 
     print_ca(this, actual_time);
@@ -490,15 +571,24 @@ void Automata::simulate() {
 }
 
 int main () {
-  Automata* ca = new Automata(50,50);
+  automata_parameters params;
+  params.cell_size = 3;
+  params.rows = 100;
+  params.cols = 100;
+  params.time_step = 1;
+  params.simulation_time = 30;
+  params.wind_velocity = 15;
+  params.wind_direction = south;
+  params.alpha = 1;
+  params.beta = 1;
+  params.time_step = 1;
+  params.simulation_time = 30;
+  params.wind_velocity = 15;
+  params.wind_direction = south;
+  params.alpha = 1;
+  params.beta = 1;
 
-  ca->time_step = 1;
-  ca->simulation_time = 30;
-  ca->wind_velocity = 0;
-  // wind direction - TODO
-  ca->wind_direction = west;
-  ca->alpha = 1;
-  ca->beta = 1;
+  Automata* ca = new Automata(params);
   
   getCell(25,45,ca->actual_grid)->state = 3;
   getCell(25,45,ca->next_grid)->state = 3;
