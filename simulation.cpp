@@ -53,6 +53,7 @@ typedef struct automata_parameters_struct {
   unsigned int alpha;
   unsigned int beta;
   std::string input_image;
+  bool print_statistics;
 } automata_parameters;
 
 class Cell {
@@ -118,6 +119,7 @@ public:
   WindDirection wind_direction;
   unsigned int alpha;
   unsigned int beta;
+  bool do_print_statistics;
   Automata (automata_parameters*);
   void process_fire(int, int);
   float getSpreadingProbability(int, int, unsigned int);
@@ -127,6 +129,7 @@ public:
   bool isInLattice(unsigned int, unsigned int);
   void simulate();
   void actualize_grid();
+  void print_statistics(unsigned int);
 };
 
 /**********************************************
@@ -198,6 +201,42 @@ void print_ca(Automata* ca, int time) {
 **********************************************
 **********************************************
 ***/
+void Automata::print_statistics(unsigned int actual_time) {
+  std::string to_be_printed("");
+  to_be_printed.append("Statistics for fire spreading in time ")
+                .append(std::to_string(actual_time))
+                .append(":");
+
+  std::cout << std::setfill('-') << std::setw(85) << "-" << std::setfill(' ') << std::endl;
+  std::cout << to_be_printed << std::endl;
+  int burning_cells_count = 0;
+  int extincted_cells_count = 0;
+  int burning_or_extincted_cells_count = 0;
+
+  for (unsigned int i = 0; i < cols; ++i) {
+    for (unsigned int j = 0; j < rows; ++j) {
+      if (isInLattice(i,j)) {
+        if (actual_grid[i][j]->state == 3 || actual_grid[i][j]->state == 2) { // TODO - put 3 to define
+          burning_cells_count++;
+          burning_or_extincted_cells_count++;
+        } else if (actual_grid[i][j]->state == 4) {
+          extincted_cells_count++;
+          burning_or_extincted_cells_count++;
+        }
+      }
+    }
+  }
+
+  float extincted_percentage    = ((float) extincted_cells_count / (cols*rows))*100;
+  float burning_percentage      = ((float) burning_cells_count / (cols*rows))*100;
+  float ever_burned_percentage  = ((float) burning_or_extincted_cells_count / (cols*rows))*100;
+
+  std::cout << std::setw(20) << "Burning cells: " << std::setw(20) << burning_percentage << "%" << std::setw(20) << "(" << burning_cells_count << " cells of " << cols*rows << ")" << std::endl;
+  std::cout << std::setw(20) << "Extincted cells: " << std::setw(20) << extincted_percentage << "%" << std::setw(20) << "(" << extincted_cells_count << " cells of " << cols*rows << ")" << std::endl;
+  std::cout << std::setw(20) << "Ever burned cells: " << std::setw(20) << ever_burned_percentage << "%" << std::setw(20) << "(" << burning_or_extincted_cells_count << " cells of " << cols*rows << ")" << std::endl;
+  std::cout << std::setfill('-') << std::setw(85) << "-" << std::setfill(' ') << std::endl;
+  
+}
 
 /**
  * @brief      Checks, whether exists the file of given name.
@@ -228,10 +267,13 @@ void handleArguments(int argumentsCount, char** arguments, automata_parameters* 
   bool imgPathGiven = false;
   std::string direction_param("");
   std::string input_image("");
-  while ((ch = getopt(argumentsCount, arguments, "h:d:i:s:t:v:a:b:")) != -1) {
+  while ((ch = getopt(argumentsCount, arguments, "h:d:i:s:t:v:a:b:p")) != -1) {
   switch (ch) {
     case 'h':
       std::cout << "HELP - todo" << std::endl;
+      break;
+    case 'p':
+      params->print_statistics = true;
       break;
     case 'd':
       {
@@ -370,6 +412,7 @@ double randnum (double a, double b)
     wind_direction = params->wind_direction;
     alpha = params->alpha;
     beta = params->beta;
+    do_print_statistics = params->print_statistics;
 
 
   // ---------------Setting default stuff to the cells----------------------
@@ -509,7 +552,7 @@ float Automata::getSpreadingProbability(int x, int y, unsigned int t) {
   float pij = cell->ratio_of_area;
   // relates to spreading speed and direction
   float wij = cell->spread_wind_dir;
-  std::cout << "[" << x << "," << y << "]: " << ptckl << std::endl;
+  // std::cout << "[" << x << "," << y << "]: " << ptckl << std::endl;
   return alpha*sij*pij*pow(wij,beta)*ptckl;
   // return alpha*cell->material_properties.structure_combustibility*cell->ratio_of_area*cell->spread_wind_dir;
 }
@@ -704,7 +747,9 @@ void Automata::simulate() {
   burning_cells.clear();
 
   print_ca(this, actual_time);
-
+  if (do_print_statistics) {
+    print_statistics(actual_time);
+  }
   actualize_grid();
   }
 }
@@ -720,24 +765,12 @@ int main(int argc, char *argv[]) {
   params->wind_direction = west;
   params->alpha = 1;
   params->beta = 1;
+  params->print_statistics = false;
   
   handleArguments(argc, argv, params);
 
-  // printf("time_step:      %d\n", params->time_step);
-
-  // params->cell_size = 3;
-  // params->rows = 100;
-  // params->cols = 100;
-
-  // std::cout << "params->time_step:    " << params->time_step << std::endl;
-  // std::cout << "params->simulation_time:    " << params->simulation_time << std::endl;
-  // std::cout << "params->wind_velocity:    " << params->wind_velocity << std::endl;
-  // std::cout << "params->wind_direction:    " << params->wind_direction << std::endl;
-  // std::cout << "params->alpha:    " << params->alpha << std::endl;
-  // std::cout << "params->beta:    " << params->beta << std::endl;
-  // std::cout << "params->input_image:    " << params->input_image << std::endl;
-
   Automata* ca = new Automata(params);
+  std::cout << "---->" <<  params->print_statistics << std::endl;
 
   ca->simulate();
 
