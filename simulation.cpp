@@ -1,5 +1,6 @@
 /**
  * TODOs:
+ *   - vypisovat statistiky
  *   - pridat podporu Wij pre juhovychod, juhozapad, severovychod a severozapad
  *   - vyriesit otacanie mapky pre Wij nejak automaticky
  */
@@ -7,12 +8,18 @@
 #include <iostream>
 #include <vector>
 #include <stdlib.h>
+#include <getopt.h>
 #include <random>
+#include <string>
+#include <unistd.h> 
 #include "bitmap_image.hpp"
 #include "json.hpp"
 
 #define IMAGE_WIDTH   (1500)
 #define IMAGE_HEIGHT  (1500)
+#ifndef EXIT_FAILURE
+#define EXIT_FAILURE (99)
+#endif
 
 typedef struct material_struct {
  float structure_combustibility;
@@ -45,6 +52,7 @@ typedef struct automata_parameters_struct {
   WindDirection wind_direction;
   unsigned int alpha;
   unsigned int beta;
+  std::string input_image;
 } automata_parameters;
 
 class Cell {
@@ -71,14 +79,7 @@ public:
 };
 
 class Automata {
-  // unsigned int water_utilization_capacity;
-  // unsigned int nozzle_volume;
-  // unsigned int spraying_time;
-  // unsigned int nozzle_range;
-  // unsigned int arrive_time;
-
-
-
+  
 public:
   std::vector<std::vector<Cell*> > actual_grid;
   std::vector<std::vector<Cell*> > next_grid;
@@ -117,9 +118,9 @@ public:
   WindDirection wind_direction;
   unsigned int alpha;
   unsigned int beta;
-  Automata (automata_parameters);
+  Automata (automata_parameters*);
   void process_fire(int, int);
-  float getSpreadingProbability(int, int);
+  float getSpreadingProbability(int, int, unsigned int);
   std::vector<std::vector<Cell*>> getNeighbourhood(unsigned int, unsigned int);
   std::vector<Cell*> getSpreadingCells();
   std::vector<Cell*> getBurningCells();
@@ -169,14 +170,8 @@ void print_ca(Automata* ca, int time) {
         canvas.pen_color(255,255,255);
       }
       switch(state) {
-        // case 0:
-        // canvas.pen_color(255,255,255);
-          // break; //optional
-          // case 1  :
-          // canvas.pen_color(200,200,200);
-          // break; //optional
-          case 2  :
-          canvas.pen_color(255, 191, 0);
+        case 2  :
+        canvas.pen_color(255, 191, 0);
           break; //optional
           case 3  :
           canvas.pen_color(255, 0, 0);
@@ -184,28 +179,17 @@ void print_ca(Automata* ca, int time) {
           case 4  :
           canvas.pen_color(0,0,0);
         }
-      //  // you can have any number of case statements.
-      //   default : //Optional
-      //   canvas.pen_color(0,0,0);
-      // }
-
-      // int shade = 255*ca->actual_grid[j][i]->spread_wind_dir;
-      // if (ca->actual_grid[j][i]->spread_wind_dir == 42) {
-      //   canvas.pen_color(255,255,255);
-      // } else {
-      //   canvas.pen_color(shade, 0, 0);
-      // }
-      // std::cout << i << std::endl;
-      canvas.fill_rectangle(x_coord(image_width,(image_width/ca->cols)*j),y_coord(image_height,(image_height/ca->rows)*i),x_coord(image_width,(image_width/ca->cols)*j+image_width/ca->cols),y_coord(image_height,(image_height/ca->rows)*i+(image_height/ca->rows)));
+      
+        canvas.fill_rectangle(x_coord(image_width,(image_width/ca->cols)*j),y_coord(image_height,(image_height/ca->rows)*i),x_coord(image_width,(image_width/ca->cols)*j+image_width/ca->cols),y_coord(image_height,(image_height/ca->rows)*i+(image_height/ca->rows)));
       // canvas.fill_rectangle(x_coord(image_width,(image_width/ca->cols)*i),y_coord(image_height,(image_height/ca->rows)*j),x_coord(image_width,(image_width/ca->cols)*i+image_width/ca->cols),y_coord(image_height,(image_height/ca->rows)*j+(image_height/ca->rows)));
-      canvas.pen_color(0,0,0);
-      canvas.rectangle(x_coord(image_width,(image_width/ca->cols)*j),y_coord(image_height,(image_height/ca->rows)*i),x_coord(image_width,(image_width/ca->cols)*j+image_width/ca->cols),y_coord(image_height,(image_height/ca->rows)*i+(image_height/ca->rows)));
+        canvas.pen_color(0,0,0);
+        canvas.rectangle(x_coord(image_width,(image_width/ca->cols)*j),y_coord(image_height,(image_height/ca->rows)*i),x_coord(image_width,(image_width/ca->cols)*j+image_width/ca->cols),y_coord(image_height,(image_height/ca->rows)*i+(image_height/ca->rows)));
+      }
     }
-  }
-  std::string timeStr = std::to_string(time);
-  canvas.image().save_image("moj_obrazok-"+timeStr+".bmp");
+    std::string timeStr = std::to_string(time);
+    canvas.image().save_image("moj_obrazok-"+timeStr+".bmp");
 
-}
+  }
 
 /**********************************************
 **********************************************
@@ -215,12 +199,121 @@ void print_ca(Automata* ca, int time) {
 **********************************************
 ***/
 
-
-/*
- *void Box::setLength( double len ) {
-   length = len;
+/**
+ * @brief      Checks, whether exists the file of given name.
+ *
+ * @param[in]  strFileName  The string file name
+ *
+ * @return     1 when file exists, 0 otherwise
+ */
+int fileExists(std::string strFileName) {
+   if( access( strFileName.c_str(), F_OK ) != -1 ) {
+      return 1;
+   }
+   return 0;
 }
-*/
+
+/**
+ * @brief      Function for getting arguments, exits when there's something wrong with arguments.
+ *             When this function is called and program continues, arguments passed to program
+ *             are checked and are OK.
+ *
+ * @param[in]  argumentsCount  The arguments count
+ * @param      arguments       The arguments
+ * @param      params          Container of parameters
+ */
+
+void handleArguments(int argumentsCount, char** arguments, automata_parameters* params) {
+  int ch;
+  bool imgPathGiven = false;
+  std::string direction_param("");
+  std::string input_image("");
+  while ((ch = getopt(argumentsCount, arguments, "h:d:i:s:t:v:a:b:")) != -1) {
+  switch (ch) {
+    case 'h':
+      std::cout << "HELP - todo" << std::endl;
+      break;
+    case 'd':
+      {
+            // params->wind_direction = optarg;
+            direction_param = optarg;
+            std::cout << "--->" << direction_param <<  "<---" << std::endl;
+            // printf("%s\n", direction_param);
+            if (direction_param == "west") {
+              params->wind_direction = west;
+            } else if (direction_param == "east") {
+              params->wind_direction = east;
+            } else if (direction_param == "south") {
+              params->wind_direction = south;
+            } else if (direction_param == "north") {
+              params->wind_direction = north;
+            } else {
+               fprintf(stderr, "ERROR: Wind direction must be west, east, south or north\n");
+               exit(EXIT_FAILURE);
+            }
+      }
+      break;
+    case 'i':
+          params->input_image = optarg;
+          if (fileExists(params->input_image) == 0) {
+            fprintf(stderr, "Image %s does not exist or permission to read was denied\n", params->input_image.c_str());
+            exit(EXIT_FAILURE);
+          }
+          break;
+    case 's':{
+          char *ptr_step;
+          params->time_step = strtol(optarg, &ptr_step, 10);
+          if ((int) ptr_step[0] != 0) {
+             fprintf(stderr, "ERROR: Time step must be an integer\n");
+             exit(EXIT_FAILURE);
+          }}
+          break;
+    case 't':{
+          char *ptr_sim_time;
+          params->simulation_time = strtol(optarg, &ptr_sim_time, 10);
+          if ((int) ptr_sim_time[0] != 0) {
+             fprintf(stderr, "ERROR: Simulation time must be an integer\n");
+             exit(EXIT_FAILURE);
+          }}
+          break;
+    case 'v':
+      {
+            char *ptr_wvelocity;
+            params->wind_velocity = strtol(optarg, &ptr_wvelocity, 10);
+            if ((int) ptr_wvelocity[0] != 0) {
+               fprintf(stderr, "ERROR: Wind velocity must be an integer\n");
+               exit(EXIT_FAILURE);
+            }
+      }
+      break;
+    case 'a':
+      {
+        char *ptr_alpha;
+        params->alpha = strtol(optarg, &ptr_alpha, 10);
+        if ((int) ptr_alpha[0] != 0) {
+           fprintf(stderr, "ERROR: Time step must be an integer\n");
+           exit(EXIT_FAILURE);
+        }}
+        break;
+    case 'b':
+      {
+        char *ptr_beta;
+        params->beta = strtol(optarg, &ptr_beta, 10);
+        if ((int) ptr_beta[0] != 0) {
+           fprintf(stderr, "ERROR: Time step must be an integer\n");
+           exit(EXIT_FAILURE);
+        }}
+        break;
+    default:
+      break;
+      }
+
+  } // while
+  if (params->input_image == "") {
+      fprintf(stderr, "File name of input image is required\n");
+      exit(EXIT_FAILURE);
+    }
+}
 
 double randnum (double a, double b)
 {
@@ -234,51 +327,67 @@ double randnum (double a, double b)
  *
  * @param      pointer  Pointer to the cell to be copied
  */
-Cell* Cell::copy() {
-  Cell* to_be_returned = new Cell();
+  Cell* Cell::copy() {
+    Cell* to_be_returned = new Cell();
 
-  to_be_returned->x = this->x;
-  to_be_returned->y = this->y;
-  to_be_returned->spread_wind_dir = this->spread_wind_dir;
-  to_be_returned->material_properties = this->material_properties;
-  to_be_returned->ratio_of_area = this->ratio_of_area;
-  to_be_returned->spread_probability = this->spread_probability;
-  to_be_returned->state = this->state;
-  to_be_returned->burning_time = this->burning_time;
+    to_be_returned->x = this->x;
+    to_be_returned->y = this->y;
+    to_be_returned->spread_wind_dir = this->spread_wind_dir;
+    to_be_returned->material_properties = this->material_properties;
+    to_be_returned->ratio_of_area = this->ratio_of_area;
+    to_be_returned->spread_probability = this->spread_probability;
+    to_be_returned->state = this->state;
+    to_be_returned->burning_time = this->burning_time;
 
-  return to_be_returned;
-}
-
-
-Automata::Automata(automata_parameters params) {
-  cell_size = params.cell_size;
-  rows = params.rows;
-  cols = params.cols;
-  simulation_time = params.simulation_time;
-  time_step = params.time_step;
-  actual_time = 0;
-  wind_velocity = params.wind_velocity;
-  wind_direction = params.wind_direction;
-  alpha = params.alpha;
-  beta = params.beta;
+    return to_be_returned;
+  }
 
 
-  // ---------------ORIG algoritmus----------------------
-  std::vector<Cell*> tmp_vec;
+  Automata::Automata(automata_parameters* params) {
+    bitmap_image image(params->input_image);
+
+    if (!image) {
+      printf("Error - Failed to open: %s\n", params->input_image);
+      exit(EXIT_FAILURE);
+    }
+
+    const unsigned int height = image.height();
+    const unsigned int width  = image.width();
+
+    if (image.height() % 3 != 0 || image.width() % 3 != 0) {
+      printf("Error - Height or width of image is number that is not divisible by 3 (image has size %dx%d)\n", image.width(), image.height());
+      exit(EXIT_FAILURE);
+    }
+
+
+    cell_size = params->cell_size;
+    rows = width / 3;
+    cols = height / 3;
+    simulation_time = params->simulation_time;
+    time_step = params->time_step;
+    actual_time = 0;
+    wind_velocity = params->wind_velocity;
+    wind_direction = params->wind_direction;
+    alpha = params->alpha;
+    beta = params->beta;
+
+
+  // ---------------Setting default stuff to the cells----------------------
+    std::vector<Cell*> tmp_vec;
   // filling actual grid
-  for (unsigned int x = 0; x < cols; ++x) {
-    for (unsigned int y = 0; y < rows; ++y) {
-      material tmpMat;
-      tmpMat.structure_combustibility = 0;
-      tmpMat.spread_ability_time = 0;
-      tmpMat.extinction_time = 0;
+    for (unsigned int x = 0; x < cols; ++x) {
+      for (unsigned int y = 0; y < rows; ++y) {
+        material tmpMat;
+        tmpMat.structure_combustibility = 0;
+        tmpMat.spread_ability_time = 0;
+        tmpMat.extinction_time = 0;
 
-      Cell* to_be_added = new Cell;
-      to_be_added->material_properties = tmpMat;
-      to_be_added->x = x;
-      to_be_added->y = y;
+        Cell* to_be_added = new Cell;
+        to_be_added->material_properties = tmpMat;
+        to_be_added->x = x;
+        to_be_added->y = y;
       to_be_added->state = 1; // TODO - put it to define
-      to_be_added->spread_wind_dir = 42; // TODO - delete this line
+      to_be_added->spread_wind_dir = 0; // TODO - delete this line
       to_be_added->ratio_of_area = 1;
       tmp_vec.push_back(to_be_added);
     }
@@ -287,17 +396,10 @@ Automata::Automata(automata_parameters params) {
   }
   // ----------------------------------------------------
 
-  bitmap_image image("input-1.bmp");
-
-  if (!image) {
-    printf("Error - Failed to open: input.bmp\n");
-    exit(1);
-  }
-
-  const unsigned int height = image.height();
-  const unsigned int width  = image.width();
+  
 
   rgb_t colour;
+  int lol = 0;
 
   for (std::size_t y = 0; y < height; y+=3) {
     for (std::size_t x = 0; x < width; x+=3) {
@@ -308,12 +410,10 @@ Automata::Automata(automata_parameters params) {
         for (int xi = 0; xi < 3; ++xi) {
           rgb_t colour;
           image.get_pixel(x+xi, y+yi, colour);
-          // std::cout << "Citam z [" << x+xi << "," << y+yi << "], je tu farba: " << colour.red << "," << colour.green << "," << colour.blue << std::endl;
-          printf("Citam z [%d,%d], je tu farba %d,%d,%d\n", x+xi, y+y, colour.red, colour.green, colour.blue);
           if (colour.red == 104 && colour.green == 55 && colour.blue == 29) {
             // wood
             woodRatio += 1.0/9;
-            std::cout << woodRatio << std::endl;
+            // std::cout << woodRatio << std::endl;
           } else if (colour.red == 89 && colour.green == 89 && colour.blue == 0) {
             // fireproofWood
             fireproofWoodRatio += 1.0/9;
@@ -325,39 +425,44 @@ Automata::Automata(automata_parameters params) {
 
 
       if (fire) {
-        actual_grid[x/3][y/3]->state = 3;
-      }
-      if (woodRatio != 0.0 || fireproofWoodRatio != 0.0) {
-        actual_grid[x/3][y/3]->material_properties.structure_combustibility = woodRatio > fireproofWoodRatio ? 1.0 : 0.6;
+        actual_grid[x/3][y/3]->state = 2;
+        actual_grid[x/3][y/3]->burning_time = 0;
+        actual_grid[x/3][y/3]->material_properties.structure_combustibility  = woodRatio > fireproofWoodRatio ? 1.0 : 0.6;
         actual_grid[x/3][y/3]->material_properties.spread_ability_time = 2;
         actual_grid[x/3][y/3]->material_properties.extinction_time = 10;
+      }
+      if (woodRatio != 0.0 || fireproofWoodRatio != 0.0) {
+        material tmpMat;
+
+        tmpMat.structure_combustibility = woodRatio > fireproofWoodRatio ? 1.0 : 0.6;
+        tmpMat.spread_ability_time = 2;
+        tmpMat.extinction_time = 10;
+        
+        // std::cout << lol << " " << isInLattice(x/3,y/3) << " SOM TU [" << x/3 << "," << y/3 << "]" << std::endl;
+        // std::cout << lol << "cols: " << cols << " SOM TU [" << x/3 << "," << y/3 << "]" << std::endl;
+
+        actual_grid[x/3][y/3]->material_properties = tmpMat;
 
         actual_grid[x/3][y/3]->state = 1; // TODO - put it to define
-        actual_grid[x/3][y/3]->ratio_of_area = woodRatio > fireproofWoodRatio ? woodRatio : fireproofWoodRatio;
+        actual_grid[x/3][y/3]->ratio_of_area = 1;
       }
+      lol++;
     }
   }
+
 
   // filling next grid
   for (unsigned int x = 0; x < cols; ++x) {
     for (unsigned int y = 0; y < rows; ++y) {
       Cell* to_be_added_to_new = actual_grid[x][y]->copy();
       tmp_vec.push_back(to_be_added_to_new);
+      // std::cout << to_be_added_to_new->ratio_of_area << std::endl;
     }
     next_grid.push_back(tmp_vec);
     tmp_vec.clear();
   }
 
 }
-
-
-  // for (int i = 0; i < r; ++i) {
-  //   for (int j = 0; j < c; ++j) {
-  //     std::cout << "|" << actual_grid[i][j]->x << "," << actual_grid[i][j]->y << "|";
-  //   }
-  //   std::cout << std::endl;
-  // }
-// }
 
 void Automata::actualize_grid() {
   for (unsigned int x = 0; x < cols; ++x) {
@@ -373,7 +478,16 @@ bool Automata::isInLattice(unsigned int x, unsigned int y) {
   return (x < cols && y < rows);
 }
 
-float Automata::getSpreadingProbability(int x, int y) {
+/**
+ * @brief      Gets the spreading probability.
+ *
+ * @param[in]  x     x coordinate of cell, that spreading probability should be counted for
+ * @param[in]  y     y coordinate of cell, that spreading probability should be counted for
+ * @param[in]  t     Burning time of spreading cell
+ *
+ * @return     The spreading probability.
+ */
+float Automata::getSpreadingProbability(int x, int y, unsigned int t) {
   if (!isInLattice(x,y)) {
     return 0;
   }
@@ -382,7 +496,6 @@ float Automata::getSpreadingProbability(int x, int y) {
   float ptckl = 1.0;
   float t1 = cell->material_properties.spread_ability_time;
   float t2 = cell->material_properties.extinction_time;
-  float t = cell->burning_time;
 
   if (((t2-t1)/5)+t1 <= t && t <= t2) {
     ptckl = (5*(-t+t2))/(4*(t2-t1));
@@ -396,7 +509,7 @@ float Automata::getSpreadingProbability(int x, int y) {
   float pij = cell->ratio_of_area;
   // relates to spreading speed and direction
   float wij = cell->spread_wind_dir;
-
+  std::cout << "[" << x << "," << y << "]: " << ptckl << std::endl;
   return alpha*sij*pij*pow(wij,beta)*ptckl;
   // return alpha*cell->material_properties.structure_combustibility*cell->ratio_of_area*cell->spread_wind_dir;
 }
@@ -460,27 +573,10 @@ void Automata::process_fire(int x, int y) {
         col_index = neighbourhood[row].size()-col-1;
       }
       // assigning spread_wind_dir property
-      neighbourhood[row][col]->spread_wind_dir  = v[row_index][col_index];
+      neighbourhood[row][col]->spread_wind_dir = v[row_index][col_index];
     }
       // std::cout << std::endl << "-----------------------" << std::endl;
   }
-
-  //JUST PLAYING
-
-  // for (int row = 0; row < neighbourhood.size(); ++row) {
-  //   for (int col = 0; col < neighbourhood[row].size(); ++col) {
-  //     Cell* processed_cell = neighbourhood[row][col];
-  //     if (processed_cell->state == 1) {
-  //       float ran = 0.5;
-  //       if (getSpreadingProbability(processed_cell->x,processed_cell->y) > ran) {
-  //         // bunka na suradniciach bunky neighbourhood[row][col] bude v dalsom kroku horiet
-  //         // getCellFromNextGrid(processed_cell->x, processed_cell->y)->state = 2;
-  //         // getCellFromNextGrid(processed_cell->x, processed_cell->y)->burning_time = 0; // 0 alebo time_step?
-  //       }
-  //     }
-  //   }
-  // }
-
 }
 
 std::vector<std::vector<Cell*>> Automata::getNeighbourhood(unsigned int x_given, unsigned int y_given) {
@@ -520,35 +616,35 @@ std::vector<std::vector<Cell*>> Automata::getNeighbourhood(unsigned int x_given,
  * @return     The 1 dimensional vector of spreading cells.
  */
 std::vector<Cell*> Automata::getBurningCells() {
-    // this vector holds the spreading cells (spreading cells have state = 3)
+    // this vector holds the burning cells (burning cells have state = 2 or state = 3)
   std::vector<Cell*> burning_cells;
     // filling burning_cells vector
   for (unsigned int i = 0; i < cols; ++i) {
     for (unsigned int j = 0; j < rows; ++j) {
       if (isInLattice(i,j)) {
-                if (actual_grid[i][j]->state == 3 || actual_grid[i][j]->state == 2) { // TODO - put 3 to define
-                  burning_cells.push_back(actual_grid[i][j]);
-                }
-              }
-            }
-          }
-          return burning_cells;
+        if (actual_grid[i][j]->state == 3 || actual_grid[i][j]->state == 2) { // TODO - put 3 to define
+          burning_cells.push_back(actual_grid[i][j]);
         }
+      }
+    }
+  }
+  return burning_cells;
+}
 
 /**
  * @brief      Gets all the cells, that have state = 3
  *
  * @return     The 1 dimensional vector of spreading cells.
  */
-        std::vector<Cell*> Automata::getSpreadingCells() {
+std::vector<Cell*> Automata::getSpreadingCells() {
   // this vector holds the spreading cells (spreading cells have state = 3)
-          std::vector<Cell*> spreading_cells;
+  std::vector<Cell*> spreading_cells;
   // filling spreading_cells vector
-          for (unsigned int i = 0; i < cols; ++i) {
-            for (unsigned int j = 0; j < rows; ++j) {
-              if (isInLattice(i,j)) {
+  for (unsigned int i = 0; i < cols; ++i) {
+    for (unsigned int j = 0; j < rows; ++j) {
+      if (isInLattice(i,j)) {
         if (actual_grid[i][j]->state == 3) { // TODO - put 3 to define
-          spreading_cells.push_back(actual_grid[i][j]);
+        spreading_cells.push_back(actual_grid[i][j]);
         }
       }
     }
@@ -567,151 +663,83 @@ void Automata::simulate() {
   for (actual_time = 0; actual_time < simulation_time; actual_time += time_step) {
 
     // Updating cell states if they are burning too long for their states
-    std::vector<Cell*> burning_cells = getBurningCells();
-    for (unsigned int i = 0; i < burning_cells.size(); ++i) {
-      Cell* tmpCell = burning_cells[i];
-      unsigned int x = tmpCell->x;
-      unsigned int y = tmpCell->y;
-
-      if (tmpCell->state == 2 || tmpCell->state == 3) {
-        next_grid[x][y]->burning_time += time_step;
-      }
-      if ((tmpCell->state == 2 && tmpCell->burning_time >= tmpCell->material_properties.spread_ability_time) || (tmpCell->state == 3 && tmpCell->burning_time >= tmpCell->material_properties.extinction_time)) {
-        next_grid[x][y]->state++;
-      }
+  std::vector<Cell*> burning_cells = getBurningCells();
+  for (unsigned int i = 0; i < burning_cells.size(); ++i) {
+    Cell* tmpCell = burning_cells[i];
+    unsigned int x = tmpCell->x;
+    unsigned int y = tmpCell->y;
+    if (tmpCell->state == 2 || tmpCell->state == 3) {
+      next_grid[x][y]->burning_time += time_step;
     }
+    if ((tmpCell->state == 2 && tmpCell->burning_time >= tmpCell->material_properties.spread_ability_time) || (tmpCell->state == 3 && tmpCell->burning_time >= tmpCell->material_properties.extinction_time)) {
+      // Adding +1 to actual state
+      next_grid[x][y]->state++;
+    }
+  }
 
-    // std::vector<Cell*> spreading_cells = getSpreadingCells();
     // for each spreading cell
-    for (unsigned int i = 0; i < burning_cells.size(); i++) {
-      if (burning_cells[i]->state == 3) {
+  for (unsigned int i = 0; i < burning_cells.size(); i++) {
+    if (burning_cells[i]->state == 3) {
       // getting the neighbourhood of spreading cell
-        Cell* spreading_cell = burning_cells[i];
-        std::vector<std::vector<Cell*>> neighbourhood_of_spreading = getNeighbourhood(spreading_cell->x, spreading_cell->y);
+      Cell* spreading_cell = burning_cells[i];
+      std::vector<std::vector<Cell*>> neighbourhood_of_spreading = getNeighbourhood(spreading_cell->x, spreading_cell->y);
       // set Wij parameters for equation of Fij
-        process_fire(spreading_cell->x,spreading_cell->y);
+      process_fire(spreading_cell->x,spreading_cell->y);
       // for each cell from neighbourhood of spreading cell
-        for (unsigned int j = 0; j < neighbourhood_of_spreading.size(); j++) {
-          for (unsigned int k = 0; k < neighbourhood_of_spreading[j].size(); k++) {
-            Cell* tmpCell = getCell(neighbourhood_of_spreading[j][k]->x,neighbourhood_of_spreading[j][k]->y,actual_grid);
-            if (tmpCell->state == 1) {
-              float spread_prob = getSpreadingProbability(tmpCell->x,tmpCell->y);
-              float rnd = randnum(0.0,1.0);
-              std::cout << "rnd... " << rnd << std::endl;
-              if (spread_prob > rnd) {
-                next_grid[tmpCell->x][tmpCell->y]->state = 2;
-                next_grid[tmpCell->x][tmpCell->y]->burning_time = 0;
-              }
+      for (unsigned int j = 0; j < neighbourhood_of_spreading.size(); j++) {
+        for (unsigned int k = 0; k < neighbourhood_of_spreading[j].size(); k++) {
+          Cell* tmpCell = getCell(neighbourhood_of_spreading[j][k]->x,neighbourhood_of_spreading[j][k]->y,actual_grid);
+          if (tmpCell->state == 1) {
+            float spread_prob = getSpreadingProbability(tmpCell->x,tmpCell->y,spreading_cell->burning_time);
+            float rnd = randnum(0.0,1.0);
+            if (spread_prob > rnd) {
+              next_grid[tmpCell->x][tmpCell->y]->state = 2;
+              next_grid[tmpCell->x][tmpCell->y]->burning_time = 0;
             }
           }
         }
       }
     }
-    burning_cells.clear();
+  }
+  burning_cells.clear();
 
+  print_ca(this, actual_time);
 
-    print_ca(this, actual_time);
-
-    actualize_grid();
-
-    /* code */
-    /* code */
-    /* code */
-    // burning_time kazdej horiacej bunky += time_step
-    // dealokuj a vymaz to, co je v actual_grid
-    // 
-    // actual_grid = copy(next_grid);
-    // 
-    // obsah next_grid bude ten isty, budem na nom stavat dalej
+  actualize_grid();
   }
 }
 
-int main () {
-  automata_parameters params;
-  params.cell_size = 3;
-  params.rows = 100;
-  params.cols = 100;
-  params.time_step = 1;
-  params.simulation_time = 30;
-  params.wind_velocity = 15;
-  params.wind_direction = south;
-  params.alpha = 1;
-  params.beta = 1;
-  params.time_step = 1;
-  params.simulation_time = 30;
-  params.wind_velocity = 15;
-  params.wind_direction = south;
-  params.alpha = 1;
-  params.beta = 1;
+int main(int argc, char *argv[]) {
+  automata_parameters* params = new automata_parameters();
+
+  params->time_step = 1;
+
+  params->input_image = "";
+  params->simulation_time = 30;
+  params->wind_velocity = 0;
+  params->wind_direction = west;
+  params->alpha = 1;
+  params->beta = 1;
+  
+  handleArguments(argc, argv, params);
+
+  // printf("time_step:      %d\n", params->time_step);
+
+  // params->cell_size = 3;
+  // params->rows = 100;
+  // params->cols = 100;
+
+  // std::cout << "params->time_step:    " << params->time_step << std::endl;
+  // std::cout << "params->simulation_time:    " << params->simulation_time << std::endl;
+  // std::cout << "params->wind_velocity:    " << params->wind_velocity << std::endl;
+  // std::cout << "params->wind_direction:    " << params->wind_direction << std::endl;
+  // std::cout << "params->alpha:    " << params->alpha << std::endl;
+  // std::cout << "params->beta:    " << params->beta << std::endl;
+  // std::cout << "params->input_image:    " << params->input_image << std::endl;
 
   Automata* ca = new Automata(params);
+
   ca->simulate();
-
-  print_ca(ca, 999);
-
-  // getCell(25,45,ca->actual_grid)->state = 3;
-  // getCell(25,45,ca->next_grid)->state = 3;
-  // getCell(15,15,ca->actual_grid)->state = 3;
-  // getCell(15,15,ca->next_grid)->state = 3;
-
-  // ca->simulate();
-
-  // std::cout << ca->actual_grid[25][25]->state << std::endl;
-  // std::cout << ca->next_grid[25][25]->state << std::endl;
-
-
-
-  // //////just testing start///////////
-  // material tmpMat;
-  // tmpMat.structure_combustibility = 1;
-  // tmpMat.spread_ability_time = 2;
-  // tmpMat.extinction_time = 10;
-
-  // Cell* tmpCell = new Cell;
-  // tmpCell->material_properties = tmpMat;
-  // tmpCell->x = 5;
-  // tmpCell->y = 6;
-  // tmpCell->state = 1; // TODO - put it to define
-  // tmpCell->spread_wind_dir = 42; // TODO - delete this line
-  // tmpCell->ratio_of_area = 1;
-
-  // std::cout << tmpCell << std::endl;
-  // Cell* anotherCell = tmpCell->copy();
-  // anotherCell->x = 1598;
-  // std::cout << anotherCell->x << std::endl;
-  // std::cout << tmpCell->x << std::endl;
-  //////just testing end/////////////
-
-  // std::vector<std::vector<Cell*>> tmp = ca->getNeighbourhood(5,20);
-
-  // std::cout << tmp.size() << "x" << tmp[0].size() << std::endl;
-  // for (int i = 0; i < tmp.size(); ++i) {
-    // for (int j = 0; j < tmp[i].size(); ++j) {
-  //     std::cout << "|" << actual_grid[i][j]->x << "," << actual_grid[i][j]->y << "|";
-      // std::cout << "|" << tmp[i][j]->x << "," << tmp[i][j]->y;
-    // }
-    // std::cout << std::endl;
-  // }
-
-  // std::cout << "================================" << std::endl;
-
-  // for (int i = 0; i < ca->actual_grid.size(); ++i) {
-  //   for (int j = 0; j < ca->actual_grid[i].size(); ++j) {
-  //     std::cout << "[" << ca->actual_grid[i][j]->x << "," << ca->actual_grid[i][j]->y << "]" << std::endl;
-  //   }
-  //   std::cout << std::endl;
-  // }
-
-
-  // for (unsigned int i = 0; i < tmp.size(); ++i) {
-  //   for (unsigned int j = 0; j < tmp[i].size(); ++j) {
-  //     tmp[i][j]->state = 2;
-  //   }
-  // }
-
-  // ca->process_fire();
-
-
 
   return 0;
 }
