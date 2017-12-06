@@ -12,8 +12,9 @@
 #include <random>
 #include <string>
 #include <unistd.h> 
+#include <sstream>
+#include <iomanip>
 #include "bitmap_image.hpp"
-#include "json.hpp"
 
 #define IMAGE_WIDTH   (1500)
 #define IMAGE_HEIGHT  (1500)
@@ -150,8 +151,8 @@ double y_coord(int height, double y) {
 
 // TODO - do nazvu suboru pridavat cas simulacie
 void print_ca(Automata* ca, int time) {
-  int image_width = ca->cols*5;
-  int image_height = ca->rows*5;
+  int image_width = ca->cols*10;
+  int image_height = ca->rows*10;
 
   cartesian_canvas canvas(image_width,image_height);
 
@@ -165,10 +166,10 @@ void print_ca(Automata* ca, int time) {
     for (unsigned int i = 0; i < ca->rows; i++) {
       int state = ca->actual_grid[j][i]->state;
       float compustibility = ca->actual_grid[j][i]->material_properties.structure_combustibility;
-      if (compustibility == 0.6) {
-        canvas.pen_color(45,24,13);
+      if (compustibility == (float) 0.6) {
+        canvas.pen_color(0,0,255);
       } else if (compustibility == 1.0) {
-        canvas.pen_color(35,35,0);
+        canvas.pen_color(0,255,0);
       } else if (compustibility == 0) {
         canvas.pen_color(255,255,255);
       }
@@ -190,7 +191,7 @@ void print_ca(Automata* ca, int time) {
       }
     }
     std::string timeStr = std::to_string(time);
-    canvas.image().save_image("moj_obrazok-"+timeStr+".bmp");
+    canvas.image().save_image("output-image-"+timeStr+".bmp");
 
   }
 
@@ -212,10 +213,13 @@ void Automata::print_statistics(unsigned int actual_time) {
   int burning_cells_count = 0;
   int extincted_cells_count = 0;
   int burning_or_extincted_cells_count = 0;
-
+  int built_up_cells = 0;
   for (unsigned int i = 0; i < cols; ++i) {
     for (unsigned int j = 0; j < rows; ++j) {
       if (isInLattice(i,j)) {
+        if (actual_grid[i][j]->material_properties.structure_combustibility > 0.0) {
+          built_up_cells++;
+        }
         if (actual_grid[i][j]->state == 3 || actual_grid[i][j]->state == 2) { // TODO - put 3 to define
           burning_cells_count++;
           burning_or_extincted_cells_count++;
@@ -227,13 +231,13 @@ void Automata::print_statistics(unsigned int actual_time) {
     }
   }
 
-  float extincted_percentage    = ((float) extincted_cells_count / (cols*rows))*100;
-  float burning_percentage      = ((float) burning_cells_count / (cols*rows))*100;
-  float ever_burned_percentage  = ((float) burning_or_extincted_cells_count / (cols*rows))*100;
+  float extincted_percentage    = ((float) extincted_cells_count / built_up_cells)*100;
+  float burning_percentage      = ((float) burning_cells_count / built_up_cells)*100;
+  float ever_burned_percentage  = ((float) burning_or_extincted_cells_count / built_up_cells)*100;
 
-  std::cout << std::setw(20) << "Burning cells: " << std::setw(20) << burning_percentage << "%" << std::setw(20) << "(" << burning_cells_count << " cells of " << cols*rows << ")" << std::endl;
-  std::cout << std::setw(20) << "Extincted cells: " << std::setw(20) << extincted_percentage << "%" << std::setw(20) << "(" << extincted_cells_count << " cells of " << cols*rows << ")" << std::endl;
-  std::cout << std::setw(20) << "Ever burned cells: " << std::setw(20) << ever_burned_percentage << "%" << std::setw(20) << "(" << burning_or_extincted_cells_count << " cells of " << cols*rows << ")" << std::endl;
+  std::cout << std::setw(20) << "Burning cells: " << std::setw(20) << burning_percentage << "%" << std::setw(20) << "(" << burning_cells_count << " cells of " << built_up_cells << " burnable cells)" << std::endl;
+  std::cout << std::setw(20) << "Extincted cells: " << std::setw(20) << extincted_percentage << "%" << std::setw(20) << "(" << extincted_cells_count << " cells of " << built_up_cells << " burnable cells)" << std::endl;
+  std::cout << std::setw(20) << "Ever burned cells: " << std::setw(20) << ever_burned_percentage << "%" << std::setw(20) << "(" << burning_or_extincted_cells_count << " cells of " << built_up_cells << " burnable cells)" << std::endl;
   std::cout << std::setfill('-') << std::setw(85) << "-" << std::setfill(' ') << std::endl;
   
 }
@@ -279,7 +283,7 @@ void handleArguments(int argumentsCount, char** arguments, automata_parameters* 
       {
             // params->wind_direction = optarg;
             direction_param = optarg;
-            std::cout << "--->" << direction_param <<  "<---" << std::endl;
+            // std::cout << "--->" << direction_param <<  "<---" << std::endl;
             // printf("%s\n", direction_param);
             if (direction_param == "west") {
               params->wind_direction = west;
@@ -457,7 +461,7 @@ double randnum (double a, double b)
             // wood
             woodRatio += 1.0/9;
             // std::cout << woodRatio << std::endl;
-          } else if (colour.red == 89 && colour.green == 89 && colour.blue == 0) {
+          } else if (colour.red == 0 && colour.green == 0 && colour.blue == 255) {
             // fireproofWood
             fireproofWoodRatio += 1.0/9;
           } else if (colour.red == 255 && colour.green == 0 && colour.blue == 0) {
@@ -770,7 +774,7 @@ int main(int argc, char *argv[]) {
   handleArguments(argc, argv, params);
 
   Automata* ca = new Automata(params);
-  std::cout << "---->" <<  params->print_statistics << std::endl;
+  // std::cout << "---->" <<  params->print_statistics << std::endl;
 
   ca->simulate();
 
